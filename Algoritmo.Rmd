@@ -1,0 +1,945 @@
+---
+title: "ARA - Epiak"
+output: 
+  flexdashboard::flex_dashboard:
+      orientation: columns
+      vertical_layout: fill
+      css: css/styles.css
+      logo: img/logo.png
+runtime: shiny
+---
+
+```{r setup, include=FALSE}
+####### Loading R packages
+library(shiny)
+library(flexdashboard)
+library(shinydashboard)
+library(shinythemes)
+library(shinyWidgets)
+library(leaflet)
+library(scales)
+library(rgdal)
+library(dplyr)
+library(htmltools)
+library(ggplot2)
+library(RColorBrewer)
+library(fmsb)
+library(psych)
+library(shapefiles)
+library(ggradar)
+library(ggcorrplot)
+library(plotly)
+library(DT)
+library(sf)
+library(odbc)
+library(RSQLite)
+```
+
+```{r}
+Sys.setenv(SHAPE_RESTORE_SHX="YES")
+```
+
+```{r}
+#Nesse chunk os dados vao ser coletados do banco de dados do cliente para serem
+#usados para as visualizacoes e comparacoes
+
+# Dados
+# con <- dbConnect(RSQLite::SQLite(), )
+# placeBase <- tbl(con, ) %>% collect()
+# dbDisconnect(con)
+placeBase <- read.csv("C:/Users/gsantiago/Documents/K-State/GeoComp-APP/Codes/Testing Shapefiles/KML/Condados.csv")
+
+# KML
+# cone <- dbConnect(RSQLite::SQLite(), )
+# place <- tbl(cone, ) %>% collect()
+# dbDisconnect(cone)
+place <- readOGR("C:/Users/gsantiago/Documents/K-State/GeoComp-APP/Codes/Testing Shapefiles/KML/Condados.kml")
+
+```
+
+# Visualization
+
+## Inputs {.sidebar data-width="350"}
+
+```{r}
+#Map
+conditionalPanel(tags$style(type="text/css",
+                 ".shiny-output-error { visibility: hidden; }",
+                 ".shiny-output-error:before { visibility: hidden; }"),
+                 condition = "input.tabselected==1",
+                 uiOutput("select"),
+                 uiOutput("yearmap"),
+                 h6("Mean or sum of data between those years:"),
+                 uiOutput("morsummap"))
+  
+output$select <- renderUI({
+    varSelectInput("select",
+                   "Data you want to visualize on map:",
+                   subset(placeBase,select = -c(1,2)))
+  })
+  
+output$yearmap <- renderUI({
+    
+    year <- toString(names(subset(placeBase, select = c(2))))
+    choice <- placeBase %>%
+      group_by(Year = eval(parse(text = year)))
+    minimo <- min(choice$Year)
+    maximo <- max(choice$Year)
+    sliderInput("yearmap",
+                "Choose the mean between below years or one year:",
+                min = minimo,
+                max = maximo,
+                value = c(minimo, maximo),
+                step = 1,
+                sep = "")
+    
+  })
+
+output$morsummap <- renderUI({
+  
+  switchInput(
+   inputId = "morsummap",
+   value = TRUE,
+   onLabel = "Mean",
+   offLabel = "Sum",
+   width = "400px",
+   onStatus = "secondary")
+  
+})
+
+```
+
+```{r}
+# Radar Chart
+
+conditionalPanel(condition = "input.tabselected==2",
+                uiOutput("placeoryearRadar"),
+                uiOutput("selectplacesRadar"),
+                uiOutput("yearRadar"),
+                uiOutput("dataRadar"))
+                
+output$placeoryearRadar <- renderUI({
+  
+  selectInput("placeoryearRadar",
+               h6("Compare different places in years or the same place in different years"),
+               choices = c("Compare Places" = "MD",
+                           "Compare Years" = "SD")
+  )
+  
+})
+
+output$selectplacesRadar <- renderUI({
+  place <- toString(names(subset(placeBase, select = c(1))))
+  choice <- placeBase %>%
+    group_by(States = eval(parse(text = place)))
+  
+  if(input$placeoryearRadar == "MD"){
+    
+    selectizeInput("selectplacesRadar",
+                   h6("Places you want to visualize on graph:"),
+                   choices = c("Choose up to 10 Places" = '',
+                               choice$States),
+                   multiple = TRUE,
+                   options = list(maxItems = 10))
+  }
+  
+  else if(input$placeoryearRadar == "SD"){
+    selectInput("selectplacesRadar",
+                h6("Place you want to visualize on graph:"),
+                choices = c("Choose a Places" = '',
+                            choice$States))
+  }
+  
+})
+
+output$yearRadar <- renderUI({
+  
+  year <- toString(names(subset(placeBase, select = c(2))))
+  choice <- placeBase %>%
+    group_by(Year = eval(parse(text = year)))
+  minimo <- min(choice$Year)
+  maximo <- max(choice$Year)
+  
+  selectizeInput("yearRadar",
+                   h6("Choose years you want to compare"),
+                   choices = c("Choose years" = '',
+                               choice$Year),
+                   multiple = TRUE)
+    
+  
+})
+
+output$dataRadar <- renderUI({
+  
+  shinyWidgets::pickerInput(
+    inputId = "dataRadar",
+    label = h6("Select what data you want to visualize on radar plot:"),
+    choices = names(subset(placeBase,select = -c(1,2))),
+    multiple = TRUE)
+  
+})
+```
+
+```{r}
+
+# Bar Filter
+
+conditionalPanel(condition = "input.tabselected==3",
+                uiOutput("placesBar"),
+                uiOutput("yearBar"),
+                h6("Mean or sum of data between those years:"),
+                uiOutput("morsumbar"),
+                uiOutput("dataBar")
+              )
+
+output$placesBar <- renderUI({
+    place <- toString(names(subset(placeBase, select = c(1))))
+    choice <- placeBase %>%
+      group_by(States = eval(parse(text = place)))
+    
+    selectizeInput("placesBar",
+                   h6("Places you want to visualize on graph:"),
+                   choices = c("Choose up to 10 Places" = '',
+                             choice$States),
+                   multiple = TRUE,
+                   options = list(maxItems = 10))
+    
+  })
+  
+output$yearBar <- renderUI({
+  
+  year <- toString(names(subset(placeBase, select = c(2))))
+  choice <- placeBase %>%
+    group_by(Year = eval(parse(text = year)))
+  minimo <- min(choice$Year)
+  maximo <- max(choice$Year)
+  
+  sliderInput("yearBar",
+              h6("Choose the years that will be ploted::"),
+              min = minimo,
+              max = maximo,
+              value = c(minimo, maximo),
+              step = 1,
+              sep = "")
+  
+})
+
+output$morsumbar <- renderUI({
+  
+  switchInput(
+   inputId = "morsumbar",
+   value = TRUE,
+   onLabel = "Mean",
+   offLabel = "Sum",
+   onStatus = "secondary")
+  
+})
+
+output$dataBar <- renderUI({
+  
+  shinyWidgets::pickerInput(
+    inputId = "dataBar",
+    label = h6("Select what data you want to visualize on Bar plot:"),
+    choices = names(subset(placeBase,select = -c(1,2))))
+  
+})
+
+```
+
+```{r}
+
+# Box Filter
+
+conditionalPanel(condition = "input.tabselected==6",
+                uiOutput("placesBox"),
+                uiOutput("yearBox"),
+                h6("Mean or sum of data between those years:"),
+                uiOutput("dataBox")
+              )
+
+output$placesBox <- renderUI({
+    place <- toString(names(subset(placeBase, select = c(1))))
+    choice <- placeBase %>%
+      group_by(States = eval(parse(text = place)))
+    
+    selectizeInput("placesBox",
+                   h6("Places you want to visualize on graph:"),
+                   choices = c("Choose up to 10 Places" = '',
+                             choice$States),
+                   multiple = TRUE,
+                   options = list(maxItems = 10))
+    
+  })
+  
+output$yearBox <- renderUI({
+  
+  year <- toString(names(subset(placeBase, select = c(2))))
+  choice <- placeBase %>%
+    group_by(Year = eval(parse(text = year)))
+  minimo <- min(choice$Year)
+  maximo <- max(choice$Year)
+  
+  sliderInput("yearBox",
+              h6("Choose the years that will be ploted::"),
+              min = minimo,
+              max = maximo,
+              value = c(minimo, maximo),
+              step = 1,
+              sep = "")
+  
+})
+
+output$dataBox <- renderUI({
+  
+  shinyWidgets::pickerInput(
+    inputId = "dataBox",
+    label = h6("Select what data you want to visualize on Box plot:"),
+    choices = names(subset(placeBase,select = -c(1,2))))
+  
+})
+
+```
+
+```{r}
+# Correlation Filter
+
+conditionalPanel(condition = "input.tabselected==4",
+                uiOutput("placeCor"),
+                uiOutput("yearCor"),
+                uiOutput("dataCor")
+              )
+
+output$placeCor <- renderUI({
+  
+  place <- toString(names(subset(placeBase, select = c(1))))
+  choice <- placeBase %>%
+    group_by(States = eval(parse(text = place)))
+  
+  selectInput("placeCor",
+              h6("Places you want to visualize on graph:"),
+              choices = c("Choose one District" = '',
+                          choice$States))
+  
+})
+
+output$yearCor <- renderUI({
+  
+  year <- toString(names(subset(placeBase, select = c(2))))
+  choice <- placeBase %>%
+    group_by(Year = eval(parse(text = year)))
+  
+  selectizeInput("yearCor",
+                   h6("Choose years below which you want to correlate"),
+                   choices = c("Choose your years" = '',
+                               choice$Year),
+                   multiple = TRUE)
+  
+})
+
+output$dataCor <- renderUI({
+  
+  shinyWidgets::pickerInput(inputId = "dataCor",
+                            label = h6("Select what data you want to correlate: (up to 9 variables)"),
+                            choices = names(subset(placeBase,select = -c(1,2))),
+                            multiple = TRUE,
+                            options = list(maxItems = 9)
+        )
+  
+})
+```
+
+```{r}
+# Line Filter
+
+conditionalPanel(condition = "input.tabselected==5",
+                uiOutput("placesLine"),
+                uiOutput("yearLine"),
+                uiOutput("dataLine")
+              )
+
+output$placesLine <- renderUI({
+    
+  place <- toString(names(subset(placeBase, select = c(1))))
+  choice <- placeBase %>%
+    group_by(States = eval(parse(text = place)))
+  
+  selectizeInput("placesLine",
+                 h6("Places you want to visualize on graph:"),
+                 choices = c("Choose up to 10 Places" = '',
+                             choice$States),
+                 multiple = TRUE,
+                 options = list(maxItems = 10))
+  
+})
+  
+output$yearLine <- renderUI({
+  
+  year <- toString(names(subset(placeBase, select = c(2))))
+  choice <- placeBase %>%
+    group_by(Year = eval(parse(text = year)))
+  minimo <- min(choice$Year)
+  maximo <- max(choice$Year)
+  
+  sliderInput("yearLine",
+              h6("Choose the years that will be ploted:"),
+              min = minimo,
+              max = maximo,
+              value = c(minimo, maximo),
+              step = 1,
+              sep = "")
+  
+})
+
+output$dataLine <- renderUI({
+  
+  varSelectInput("dataLine",
+                     h6("Select what data you want to correlate: "),
+                     subset(placeBase,select = -c(1,2)))
+  
+})
+```
+
+## Outputs {data-width="700"}
+
+```{r}
+tabsetPanel(type = "tabs",
+            id = "tabselected",
+            tabPanel(style = "margin: 15px",
+                     "Map",
+                     value=1,
+                     span(textOutput("maptxt"), style="text-align:center; font-weight: bold"),
+                     leafletOutput("mymap"),
+                      span(uiOutput("notavmap"),
+                           style="text-align:center; font-weight: bold")
+            ),
+            tabPanel(style = "margin: 15px",
+                     "Radar",
+                     value=2,
+                     span(textOutput("plottxtRadar"),style="text-align:center; font-weight: bold"),
+                     plotlyOutput("graphRadar")
+            ),
+            tabPanel(style = "margin: 15px",
+                     "Correlation Chart",
+                     value=4,
+                     span(textOutput("plottxtCor"),style="text-align:center; font-weight: bold"),
+                     plotlyOutput("graphCor")
+            ),
+            tabPanel(style = "margin: 15px",
+                     "Line Chart",
+                     value=5,
+                     span(textOutput("plottxtLine"),style="text-align:center; font-weight: bold"),
+                     plotlyOutput("graphLine")
+            ),
+            tabPanel(style = "margin: 15px",
+                     "Bar Chart",
+                     value=3,
+                     span(textOutput("plottxtBar"),style="text-align:center; font-weight: bold"),
+                     plotlyOutput("graphBar")
+            ),
+            tabPanel(style = "margin: 15px",
+                     "Box Chart",
+                     value=6,
+                     span(textOutput("plottxtBox"),style="text-align:center; font-weight: bold"),
+                     plotlyOutput("graphBox")
+            )
+          )
+```
+
+```{r}
+####### Map Output
+
+dataInput <- reactive({
+  place <- toString(names(subset(placeBase, select = c(1))))
+  period <- toString(names(subset(placeBase, select = c(2))))
+  
+  placeOrder <- unique(placeBase[,1])
+  
+  choice <- toString(input$select)
+  
+  if(input$morsummap == TRUE){
+    placeBase %>%
+      filter(between(eval(parse(text = period)), input$yearmap[1], input$yearmap[2]))%>%
+      group_by(Districts = eval(parse(text = place))) %>%
+      summarise(Data = mean(eval(parse(text = choice)), na.rm=TRUE)) %>%
+      arrange(factor(Districts, levels = placeOrder))
+  }
+  else if(input$morsummap == FALSE){
+    placeBase %>%
+      filter(between(eval(parse(text = period)), input$yearmap[1], input$yearmap[2]))%>%
+      group_by(Districts = eval(parse(text = place))) %>%
+      summarise(Data = sum(eval(parse(text = choice)), na.rm=TRUE)) %>%
+      arrange(factor(Districts, levels = placeOrder))
+  }
+  
+  
+})
+
+palette <- reactive({
+  colorNumeric(c("#d7191c","#fdae61","#ffffbf","#abd9e9", "#2c7bb6"), domain = dataInput()$Data, reverse = TRUE)
+})
+
+pale <- reactive({
+    colorNumeric(c("#d7191c","#fdae61","#ffffbf","#abd9e9", "#2c7bb6"), domain = dataInput()$Data)
+})
+
+labels <- reactive({
+  titulo <- toString(input$select)
+  
+  paste("<p>", dataInput()$Districts, "<p>",
+        "<p>", titulo, ": ", round(dataInput()$Data, digits = 2),"<p>",
+        sep ="")
+  
+})
+
+output$mymap <- renderLeaflet({
+  
+  titulo <- toString(input$select)
+  
+  if(input$poliorpoint == "PL"){
+    if(!all(is.na(dataInput()$Data))){
+      map <- leaflet(width = 200, height = 300) %>%
+          addTiles() %>%
+          addPolygons( data = place,
+                       weight = 1,
+                       smoothFactor = 0.5,
+                       fillOpacity = 0.8,
+                       color = ~pale()(dataInput()$Data),
+                       highlight = highlightOptions(
+                         weight = 5,
+                         color = "#666666",
+                         fillOpacity = 0.7,
+                         bringToFront = TRUE
+                       ),
+                       label = lapply(labels(), HTML)
+          ) %>%
+          addLegend(pal = palette(),
+                    values = dataInput()$Data,
+                    opacity = 0.7,
+                    position = "bottomright",
+                    title = titulo,
+                    na.label = "n/a", 
+                    labFormat = labelFormat(transform = function(x) sort(x, decreasing = TRUE)))
+      }
+      else if(all(is.na(dataInput()$Data))){
+        map <- leaflet(width = 200, height = 300) %>%
+          addTiles() %>%
+          addPolygons( data = place,
+                       weight = 1,
+                       smoothFactor = 0.5,
+                       fillOpacity = 0.8,
+                       color = "#808080",
+                       highlight = highlightOptions(
+                         weight = 5,
+                         color = "#666666",
+                         fillOpacity = 0.7,
+                         bringToFront = TRUE
+                       ),
+                       label = lapply(labels(), HTML)
+          )
+      }
+  }
+  else if(input$poliorpoint == "PT"){
+      if(!all(is.na(dataInput()$Data))){
+        map <- leaflet(width = 200, height = 300) %>%
+        addTiles() %>%
+        addCircleMarkers( data = place(),
+                          radius = 10,
+                          color = "#9ba659",
+                          label = lapply(labels(), HTML))
+      }
+     else if(all(is.na(dataInput()$Data))){
+       map <- leaflet(width = 200, height = 300) %>%
+        addTiles()
+     }
+  }
+  
+    map
+})
+
+output$maptxt <- renderText({
+  
+  str2 = input$select
+  str3 = " from "
+  str4 = input$yearmap[1]
+  str5 = " to "
+  str6 = input$yearmap[2]
+  str1 = " of "
+  
+  if (input$yearmap[1] != input$yearmap[2]){
+    
+    result = paste(str2,str3,str4,str5,str6)
+    
+  }
+  
+  else if(input$yearmap[1] == input$yearmap[2]){
+    
+    result = paste(str2,str1,str4)
+    
+  }
+  
+  result
+  
+})
+
+output$notavmap <- renderText({
+  
+  if(all(is.na(dataInput()$Data))){
+    "No data available on this year"
+  }
+  
+  else if(any(is.na(dataInput()$Data))){
+    "n/a = No Available"
+  }
+})
+```
+
+```{r}
+# Radar Output
+
+dataInputGraphRadar <- reactive({
+  place <- toString(names(subset(placeBase, select = c(1))))
+  period <- toString(names(subset(placeBase, select = c(2))))
+  
+  
+  if(input$placeoryearRadar == "MD"){
+    
+    placeBase %>%
+      filter(eval(parse(text = place)) %in% input$selectplacesRadar,
+             eval(parse(text = period)) %in% input$yearRadar) %>%
+      group_by(Places = eval(parse(text = place))) %>%
+      summarise_at(vars(input$dataRadar), mean, na.rm=TRUE) %>%
+      ungroup() %>%
+      mutate_at(vars(-Places), scales::rescale)
+    
+  }
+  
+  else if(input$placeoryearRadar == "SD"){
+    
+    placeBase %>%
+      filter(eval(parse(text = place)) == input$selectplacesRadar,
+             eval(parse(text = period)) %in% input$yearRadar) %>%
+      group_by(Years = eval(parse(text = period))) %>%
+      summarise_at(vars(input$dataRadar), mean, na.rm=TRUE) %>%
+      ungroup() %>%
+      mutate_at(vars(-Years), scales::rescale)
+    
+  }
+  
+})
+
+output$graphRadar <- renderPlotly({
+  
+  graph <- dataInputGraphRadar() %>%
+      ggradar(
+        font.radar = "roboto",
+        grid.label.size = 2.5,
+        axis.label.size = 3,
+        group.point.size = 3
+      ) + 
+      theme(
+        plot.background = element_rect(fill = "#f0f0f0"),
+        panel.background = element_rect(fill = "#f0f0f0"),
+        legend.position = "top",
+        legend.justification = c(1, 0),
+        legend.text = element_text(size = 8, family = "roboto"),
+        legend.key = element_rect(fill = NA, color = NA),
+        legend.background = element_blank(),
+        axis.text = element_text(size=7, angle=90, vjust=5, hjust=5)
+      )
+  
+  ggplotly(graph, tooltip = "")
+  
+})
+
+output$plottxtRadar <- renderText({
+  
+  str2 = "Radar Plot "
+  str7 = toString(input$selectfgraphRadar)
+  str3 = "from "
+  str4 = input$yearRadar[1]
+  str5 = " to "
+  str6 = input$yearRadar[2]
+  str1 = "of "
+  str8 = input$selectplacesRadar
+  
+  if(input$placeoryearRadar == "MD"){
+    
+    if (input$yearRadar[1] != input$yearRadar[2]){
+      
+      result = paste(str2, str3, str4, str5, str6)
+      
+    }
+    
+    else if(input$yearRadar[1] == input$yearRadar[2]){
+      
+      result = paste(str2, str1, str4)
+      
+    }
+    
+  }
+  
+  else if(input$placeoryearRadar == "SD"){
+    
+    result = paste(str2,str3,str8)
+    
+  }
+  
+  result
+  
+})
+```
+
+```{r}
+
+# Bar Plot
+
+dataInputBar <- reactive({
+  place <- toString(names(subset(placeBase, select = c(1))))
+  period <- toString(names(subset(placeBase, select = c(2))))
+  choiceG <- toString(input$dataBar)
+  
+  if(input$morsumbar == TRUE){
+    placeBase %>%
+      filter(eval(parse(text = place)) %in% input$placesBar,
+             between(eval(parse(text = period)), input$yearBar[1], input$yearBar[2])) %>%
+      group_by(Places = eval(parse(text = place))) %>%
+      summarise(Data = mean(eval(parse(text = choiceG)), na.rm=TRUE))
+  }
+  else if(input$morsumbar == FALSE){
+    placeBase %>%
+      filter(eval(parse(text = place)) %in% input$placesBar,
+             between(eval(parse(text = period)), input$yearBar[1], input$yearBar[2])) %>%
+      group_by(Places = eval(parse(text = place))) %>%
+      summarise(Data = sum(eval(parse(text = choiceG)), na.rm=TRUE))
+  }
+  
+  
+})
+
+output$graphBar <- renderPlotly({
+  
+  choiceD <- toString(input$dataBar)
+  
+  barPlot <- ggplot(dataInputBar(), aes(x=Places, y=Data, fill=Places))+
+                geom_bar(stat="identity", color="#253659")+
+                geom_text(aes(label=round(Data, 2)), vjust=-0.30)+
+                theme(
+                  panel.background = element_rect(fill = "#f0f0f0",
+                                                  colour = "#c7c7c9",
+                                                  size = 0.5, linetype = "solid"),
+                  plot.background = element_rect(fill = "#f0f0f0"),
+                  axis.title.y = element_text(size = 8)
+                )+
+                labs(y = choiceD)
+  
+  ggplotly(barPlot)
+  
+})
+
+output$plottxtBar <- renderText({
+  
+  str2 = "Bar Chart"
+  str7 = toString(input$dataBar)
+  str3 = " from "
+  str4 = input$yearBar[1]
+  str5 = " to "
+  str6 = input$yearBar[2]
+  str1 = " of "
+  
+  if (input$yearBar[1] != input$yearBar[2]){
+    
+    result = paste(str2,str1,str7,str3,str4,str5,str6)
+    
+  }
+  
+  else if(input$yearBar[1] == input$yearBar[2]){
+    
+    result = paste(str2,str1,str7,str1,str4)
+    
+  }
+  
+  result
+})
+
+```
+
+```{r}
+
+# Box Plot
+
+dataInputBox <- reactive({
+  place <- toString(names(subset(placeBase, select = c(1))))
+  period <- toString(names(subset(placeBase, select = c(2))))
+  choiceG <- toString(input$dataBox)
+  
+  placeBase %>%
+    filter(eval(parse(text = place)) %in% input$placesBox,
+           between(eval(parse(text = period)), input$yearBox[1], input$yearBox[2])) %>%
+    group_by(Places = eval(parse(text = place)))%>%
+    select(Data = as.name(choiceG))
+  
+  
+})
+
+output$graphBox <- renderPlotly({
+  
+  choiceD <- toString(input$dataBox)
+  
+  boxPlot <- ggplot(dataInputBox(), aes(x=Places, y=Data, color=Places))+
+                geom_boxplot(notch=TRUE)+
+                theme(
+                  panel.background = element_rect(fill = "#f0f0f0",
+                                                  colour = "#c7c7c9",
+                                                  size = 0.5, linetype = "solid"),
+                  plot.background = element_rect(fill = "#f0f0f0"),
+                  axis.title.y = element_text(size = 8)
+                )+
+                labs(y = choiceD)
+  
+  ggplotly(boxPlot)
+  
+})
+
+output$plottxtBox <- renderText({
+  
+  str2 = "Box Chart"
+  str7 = toString(input$dataBox)
+  str3 = " from "
+  str4 = input$yearBox[1]
+  str5 = " to "
+  str6 = input$yearBox[2]
+  str1 = " of "
+  
+  if (input$yearBox[1] != input$yearBox[2]){
+    
+    result = paste(str2,str1,str7,str3,str4,str5,str6)
+    
+  }
+  
+  else if(input$yearBox[1] == input$yearBox[2]){
+    
+    result = paste(str2,str1,str7,str1,str4)
+    
+  }
+  
+  result
+})
+
+```
+
+```{r}
+# Correlation Output
+
+dataInputCor <- reactive({
+    
+  place <- toString(names(subset(placeBase, select = c(1))))
+  period <- toString(names(subset(placeBase, select = c(2))))
+  choicesD <- as.character(input$dataCor)
+  
+  placeBase %>%
+    group_by(Places = eval(parse(text = place)))%>%
+    select_at(vars(choicesD))
+  
+})
+
+output$graphCor <- renderPlotly({
+  
+  corGraph <- dataInputCor()
+  corGraph[,1] <- NULL
+  corr <- round(cor(corGraph), 1)
+  
+  corPlot <- ggcorrplot(corr,
+                        hc.order = TRUE,
+                        type = "lower",
+                        lab = TRUE,
+                        lab_size = 2,
+                        show.diag = TRUE,
+                        colors = c("red", "white","blue")) +
+    theme(axis.text.x=element_text(size=7, angle=45, vjust=1, hjust=1, 
+                                   margin=margin(-3,0,0,0)),
+          axis.text.y=element_text(size=7, margin=margin(-3,0,0,0)),
+          panel.grid.major=element_blank(),
+          plot.background = element_rect(fill = "#f0f0f0"),
+          panel.background = element_rect(fill = "#f0f0f0")) 
+  
+  ggplotly(corPlot)
+  
+})
+
+output$plottxtCor <- renderText({
+  
+  str2 = "Correlation Matrix"
+  str1 = " of "
+  str7 = toString(input$dataCor)
+  str3 = " from "
+  str4 = toString(input$yearCor[1])
+  str5 = " to "
+  str6 = toString(input$yearCor[2])
+  
+  result = paste(str2,str1,str7,str3,str4,str5,str6)
+  
+})
+```
+
+```{r}
+# Line Output
+
+dataInputLine <- reactive({
+    
+  place <- toString(names(subset(placeBase, select = c(1))))
+  period <- toString(names(subset(placeBase, select = c(2))))
+  choicesD <- as.character(input$dataLine)
+  
+  placeBase %>%
+    filter(eval(parse(text = place)) %in% input$placesLine,
+           between(eval(parse(text = period)), input$yearLine[1], input$yearLine[2])) %>%
+    group_by(Year = eval(parse(text = period)),
+             Places = eval(parse(text = place))) %>%
+    select(Data = choicesD)
+
+})
+
+output$graphLine <- renderPlotly({
+  
+  choiceD <- toString(input$dataLine)
+  
+  plotLine <- ggplot(dataInputLine(), aes(x = Year, y = Data, color = Places)) +
+    geom_line()+
+    theme(plot.background = element_rect(fill = "#f0f0f0"),
+          panel.background = element_rect(fill = "#f0f0f0"),
+          legend.background = element_rect(fill = "#f0f0f0"),
+          axis.title.y = element_text(size = 8))+
+    labs(y = choiceD)+
+    scale_x_continuous(breaks = dataInputLine()$Year)+
+    scale_y_continuous(labels = comma)
+
+  ggplotly(plotLine)
+  
+})
+
+output$plottxtLine <- renderText({
+  
+  str2 = "Line Chart"
+  str7 = toString(input$dataLine)
+  str3 = " from "
+  str4 = input$yearLine[1]
+  str5 = " to "
+  str6 = input$yearLine[2]
+  str1 = " of "
+  
+  if (input$yearLine[1] != input$yearLine[2]){
+    
+    result = paste(str2,str1,str7,str3,str4,str5,str6)
+    
+  }
+  
+  else if(input$yearLine[1] == input$yearLine[2]){
+    
+    result = paste(str2,str1,str7,str1,str4)
+    
+  }
+  
+  result
+  
+})
+```
